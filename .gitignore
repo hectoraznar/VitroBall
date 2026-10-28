@@ -1,0 +1,17 @@
+# Dependencias y build
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Logs
+*.log
+
+# Copias de seguridad de Blender
+*.blend1
+
+# Editor / sistema
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store

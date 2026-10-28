@@ -1,13 +1,27 @@
 <!doctype html>
-<html lang="en">
+<html lang="es">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>three</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#06041a" />
+    <title>Vitro Ball</title>
+
+    <!-- Tipografías: Bungee (rótulos de arcade) + Chakra Petch (texto de interfaz) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bungee&family=Chakra+Petch:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
   </head>
   <body>
-    <div id="app"></div>
-    <script type="module" src="/src/main.js"></script>
+    <div id="app">
+      <!-- Capa 3D (Three.js) -->
+      <canvas id="webgl"></canvas>
+      <!-- Capa HTML/CSS superpuesta: carga, menú, páginas y HUD (la rellena uiManager.js) -->
+      <div id="ui-root"></div>
+    </div>
+
+    <script type="module" src="/src/js/main.js"></script>
   </body>
 </html>
