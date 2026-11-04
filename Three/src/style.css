@@ -367,6 +367,86 @@ kbd {
   color: var(--ink-dim);
 }
 
+/* Colores de jugador (multijugador): J1 cian, J2 magenta */
+.p1 {
+  color: #8a96ff;
+}
+
+.p2 {
+  color: #ff6b85;
+}
+
+/* Selector de modo en Cómo jugar */
+.mode-tabs {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.mode-tab {
+  --c: var(--neon-cyan);
+  cursor: pointer;
+  padding: 0.6rem 1.3rem;
+  border: 2px solid color-mix(in srgb, var(--c) 45%, transparent);
+  border-radius: 999px;
+  background: rgba(8, 5, 32, 0.6);
+  font-family: var(--font-display);
+  font-size: clamp(0.95rem, 2.6vw, 1.2rem);
+  color: var(--ink-dim);
+  transition: border-color 0.2s, box-shadow 0.2s, background 0.2s, color 0.2s;
+}
+
+.mode-tab--versus {
+  --c: var(--neon-magenta);
+}
+
+.mode-tab:hover,
+.mode-tab[aria-selected='true'] {
+  border-color: var(--c);
+  color: var(--ink);
+}
+
+.mode-tab[aria-selected='true'] {
+  background: color-mix(in srgb, var(--c) 22%, rgba(8, 5, 32, 0.85));
+  box-shadow: 0 0 18px color-mix(in srgb, var(--c) 55%, transparent);
+}
+
+.mode-panel {
+  display: grid;
+  gap: 1.1rem;
+}
+
+.mode-panel[hidden] {
+  display: none;
+}
+
+.rules {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0;
+  padding-left: 1.3rem;
+  font-size: 1.05rem;
+  line-height: 1.55;
+}
+
+.rules strong {
+  color: var(--neon-amber);
+}
+
+.rules strong.p1 {
+  color: #8a96ff;
+}
+
+.rules strong.p2 {
+  color: #ff6b85;
+}
+
+.btn--play {
+  justify-self: start;
+  border-color: var(--neon-amber);
+  color: var(--neon-amber);
+}
+
 /* --------------------------------------------------------------------------
    HUD de partida
    -------------------------------------------------------------------------- */
@@ -407,6 +487,135 @@ kbd {
   font-family: var(--font-display);
   font-size: 1.5rem;
   font-variant-numeric: tabular-nums;
+}
+
+.score__balls {
+  display: block;
+  font-size: 0.85rem;
+  letter-spacing: 0.15em;
+  color: var(--neon-amber);
+}
+
+/* Multijugador: cada marcador con el color de su jugador */
+.layer--versus .score[data-player='0'] .score__label {
+  color: #8a96ff;
+}
+
+.layer--versus .score[data-player='1'] .score__label {
+  color: #ff6b85;
+}
+
+/* Panel de fin de partida */
+.hud__over {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  gap: 1rem;
+  justify-items: center;
+  width: min(420px, calc(100% - 2rem));
+  padding: 1.8rem 1.5rem;
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+  border: 2px solid var(--neon-amber);
+  border-radius: 1.2rem;
+  background: rgba(8, 5, 32, 0.9);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 0 30px rgba(255, 194, 71, 0.35);
+  text-align: center;
+}
+
+.hud__over[hidden] {
+  display: none;
+}
+
+.hud__over-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: clamp(1.6rem, 6vw, 2.4rem);
+  color: var(--neon-amber);
+  text-shadow: 0 0 0.4em rgba(255, 194, 71, 0.45);
+}
+
+.hud__over-text {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+/* VITRO: estado de la habilidad en cada marcador */
+.score__vitro {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--ink-dim);
+}
+
+.score__vitro.is-ready {
+  color: var(--neon-cyan);
+  text-shadow: 0 0 8px rgba(53, 240, 255, 0.6);
+}
+
+.score__vitro.is-tilt {
+  color: #ff4d6d;
+}
+
+/* Selector de estilo (Default / Ninja) */
+.hud__styles {
+  width: min(520px, calc(100% - 2rem));
+}
+
+.styles__rows {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.styles__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+}
+
+.styles__row > span {
+  min-width: 6.5rem;
+  font-weight: 600;
+}
+
+.mode-tab[aria-pressed='true'] {
+  border-color: var(--c);
+  color: var(--ink);
+  background: color-mix(in srgb, var(--c) 22%, rgba(8, 5, 32, 0.85));
+  box-shadow: 0 0 18px color-mix(in srgb, var(--c) 55%, transparent);
+}
+
+.styles__help {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--ink-dim);
+}
+
+.hud__styles .btn--play {
+  justify-self: center;
+}
+
+.page__subtitle {
+  margin: 0.4rem 0 0;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 1.3rem;
+  color: var(--neon-amber);
+}
+
+.hud__over-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.8rem;
 }
 
 .hud__exit {

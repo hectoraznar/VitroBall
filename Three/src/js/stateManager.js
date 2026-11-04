@@ -35,7 +35,7 @@ const ALLOWED_TRANSITIONS = Object.freeze({
   [GameState.TRANSITION]: [GameState.GAMEPLAY, GameState.MENU],
   [GameState.GAMEPLAY]: [GameState.MENU],
   [GameState.HISTORY]: [GameState.MENU],
-  [GameState.HOW_TO_PLAY]: [GameState.MENU],
+  [GameState.HOW_TO_PLAY]: [GameState.MENU, GameState.TRANSITION], // botones "Jugar" de cada modo
 });
 
 export class StateManager {

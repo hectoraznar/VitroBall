@@ -32,9 +32,12 @@ export const PALETTE = Object.freeze({
   magenta: 0xff3df2,
   amber: 0xffc247,
   violet: 0x8a5cff,
+  blue: 0x6c7cff,
+  red: 0xff4d6d,
+  pink: 0xe58cff,
 });
 
-const TABLE = Object.freeze({ width: 12, length: 22 });
+const TABLE = Object.freeze({ width: 12, length: 18 }); // mesa de UN jugador
 const WALL_HEIGHT = 1.5;
 const WALL_THICKNESS = 0.5;
 
@@ -56,86 +59,137 @@ function wallBetween(id, [x1, z1], [x2, z2]) {
   };
 }
 
+/** Flipper con el pivote en `pivot` [x, z]. El derecho es el espejo exacto del izquierdo. */
+function flipperDef(side, pivot, length = 1.9) {
+  const rest = side === 'left' ? -0.52 : 0.52; // ~30° hacia abajo
+  return { side, pivot, length, thickness: 0.5, restAngle: rest, activeAngle: -rest };
+}
+
 /**
- * Definición de un flipper. Ángulos de giro alrededor de Y (mismo convenio en
- * Three.js y Cannon). El izquierdo descansa apuntando hacia abajo (-ángulo) y
- * sube al activarse (+ángulo); el derecho es el espejo exacto.
+ * Mesa de UN jugador, copiada del modelo de Blender (Arcade2Players, mesa azul).
+ * Coordenadas [x, z] con x en [-12, 0]: carril del muelle a la izquierda
+ * (x < -10.5) y el borde x = 0 es el centro de la máquina de 2 jugadores.
+ * Paredes: [id, desde, hasta, opciones]. rail = raíl metálico encima.
  */
-function flipperDef(side) {
-  const sign = side === 'left' ? -1 : 1; // lado de la mesa donde está el pivote
-  const rest = sign * 0.52; // ~30°
+const PLAYFIELD = {
+  walls: [
+    ['lane', [-10.4, 9], [-10.2, -6.3], { rail: true }],
+    ['lane-top', [-12, -7.6], [-9.2, -9], { rail: true }],
+    ['out-1', [-10.2, 2.1], [-8.6, 3.8]],
+    ['out-2', [-8.6, 3.8], [-8.3, 5.9], { rail: true }],
+    ['out-3', [-8.3, 5.9], [-7.3, 7.0], { rail: true }],
+    ['in-1', [-0.7, 0.6], [-1.5, 3.4]],
+    ['in-2', [-1.5, 3.4], [-1.9, 5.9], { rail: true }],
+    ['in-3', [-1.9, 5.9], [-3.1, 7.0], { rail: true }],
+    ['roof', [-0.7, 0.6], [0, 0.1]], // tejadillo: la bola no se cuela entre las dos mesas
+  ],
+  bumpers: [
+    { id: 'planet-l', pos: [-8.2, -5.5], radius: 0.75, points: 100, color: 0xdfe3ff },
+    { id: 'planet-r', pos: [-3.6, -7.3], radius: 0.75, points: 100, color: 0xdfe3ff },
+    { id: 'diamond', pos: [-4.9, 1.0], radius: 0.95, sides: 4, points: 150 },
+    { id: 'moon-l', pos: [-6.6, 3.6], radius: 0.7, points: 100 },
+    { id: 'moon-r', pos: [-3.8, 3.6], radius: 0.7, points: 100 },
+    // Estrellas: sensores sin rebote que dan puntos al pasar por encima.
+    ...[[-6.3, -5.6], [-3.5, -5.6], [-8.2, -3.1], [-4.9, -3.1], [-1.8, -3.1], [-6.9, -0.25], [-2.9, -0.25]].map((pos, i) => ({
+      id: `star-${i}`, pos, radius: 0.35, points: 50, star: true, color: PALETTE.amber,
+    })),
+  ],
+  flippers: [flipperDef('left', [-7.4, 7.2]), flipperDef('right', [-3.0, 7.2])],
+  lane: [-12, -10.55],
+  plunger: [-11.27, 8.6],
+  spawn: [-11.27, 7.7],
+};
+
+/**
+ * Coloca la mesa de un jugador en la máquina.
+ * side: 0 = solitario (centrada), -1 = J1 (izquierda), +1 = J2 (derecha, espejo de J1).
+ */
+function placeHalf(def, { player, side, accent }) {
+  const mirror = side > 0;
+  const px = (x) => (mirror ? -x : x + (side === 0 ? TABLE.width / 2 : 0));
+  const point = ([x, z]) => [px(x), z];
+  const tag = (id) => `p${player}-${id}`;
+  const swap = { left: 'right', right: 'left' };
+
   return {
-    id: `flipper-${side}`,
+    player,
     side,
-    pivot: [sign * 3.3, 8.8],
-    length: 2.7,
-    thickness: 0.55,
-    restAngle: rest,
-    activeAngle: -rest,
+    accent,
+    centerX: px(-TABLE.width / 2),
+    flipperMidX: (px(def.flippers[0].pivot[0]) + px(def.flippers[1].pivot[0])) / 2,
+    lane: def.lane.map(px).sort((a, b) => a - b),
+    spawn: point(def.spawn),
+    walls: def.walls.map(([id, a, b, opts]) => ({ ...wallBetween(tag(id), point(a), point(b)), ...opts, color: accent })),
+    bumpers: def.bumpers.map((b) => ({ ...b, id: tag(b.id), pos: point(b.pos), color: b.color ?? accent })),
+    flippers: def.flippers.map((f) => {
+      const s = mirror ? swap[f.side] : f.side; // en espejo el izquierdo pasa a ser el derecho
+      return { ...flipperDef(s, point(f.pivot), f.length), id: tag(`flipper-${s}`), player, color: accent };
+    }),
+    plunger: { id: tag('plunger'), player, pos: point(def.plunger), width: 1.3, color: PALETTE.pink },
   };
 }
 
-/** Estructura común a todas las mesas: paredes, guías hacia los flippers y flippers. */
-function createBaseLayout({ id, name, players, accent, bumpers, ramps }) {
-  const hw = TABLE.width / 2;
-  const hl = TABLE.length / 2;
+/** Une una o dos mesas en un layout completo (paredes exteriores con raíles y extras centrales). */
+function createLayout({ id, name, mode, accent, halves, extraBumpers = [], extraWalls = [], core = null }) {
   const T = WALL_THICKNESS;
-
-  const flippers = ['left', 'right'].map(flipperDef);
+  const width = TABLE.width * halves.length;
+  const hw = width / 2;
+  const hl = TABLE.length / 2;
+  const outer = (wallId, x) => ({ id: wallId, pos: [x, WALL_HEIGHT / 2, 0], size: [T, WALL_HEIGHT, TABLE.length + T * 2], rotY: 0, rail: true });
 
   return {
     id,
     name,
-    players,
+    mode, // 'solo' | 'versus'
+    players: halves.length,
     accent,
-    table: { ...TABLE },
+    table: { width, length: TABLE.length },
+    halves: halves.map(({ player, side, accent, centerX, flipperMidX, lane, spawn }) => ({ player, side, accent, centerX, flipperMidX, lane, spawn })),
     walls: [
-      { id: 'wall-left', pos: [-hw - T / 2, WALL_HEIGHT / 2, 0], size: [T, WALL_HEIGHT, TABLE.length + T * 2], rotY: 0 },
-      { id: 'wall-right', pos: [hw + T / 2, WALL_HEIGHT / 2, 0], size: [T, WALL_HEIGHT, TABLE.length + T * 2], rotY: 0 },
-      wallBetween('wall-top', [-3, -hl], [3, -hl]),
-      wallBetween('corner-left', [-hw, -7.5], [-3, -hl]),
-      wallBetween('corner-right', [hw, -7.5], [3, -hl]),
-      wallBetween('guide-left', [-hw, 5.2], [-3.75, 8.2]),
-      wallBetween('guide-right', [hw, 5.2], [3.75, 8.2]),
+      outer('wall-left', -hw - T / 2),
+      outer('wall-right', hw + T / 2),
+      { id: 'wall-top', pos: [0, WALL_HEIGHT / 2, -hl - T / 2], size: [width + T * 2, WALL_HEIGHT, T], rotY: 0, rail: true },
+      ...halves.flatMap((half) => half.walls),
+      ...extraWalls,
     ],
-    bumpers,
-    ramps,
-    flippers,
-    ball: { radius: 0.45, spawn: [0, -9] },
+    bumpers: [...halves.flatMap((half) => half.bumpers), ...extraBumpers],
+    flippers: halves.flatMap((half) => half.flippers),
+    plungers: halves.map((half) => half.plunger),
+    core, // El Núcleo: zona central que dispara la bola a la mesa rival
+    ball: { radius: 0.35 },
   };
 }
 
 export const LEVEL_LAYOUTS = Object.freeze({
-  // Máquina 1: "1 Player" — tres bumpers en triángulo y una rampa.
-  machine1: createBaseLayout({
+  // Máquina 1: Solitario — la mesa azul del modelo, sola.
+  machine1: createLayout({
     id: 'machine1',
     name: 'Nebulosa',
-    players: 1,
-    accent: PALETTE.cyan,
-    bumpers: [
-      { id: 'b1', pos: [-2.8, -3.2], radius: 0.95, points: 100, color: PALETTE.cyan },
-      { id: 'b2', pos: [2.8, -3.2], radius: 0.95, points: 100, color: PALETTE.amber },
-      { id: 'b3', pos: [0, -6.2], radius: 0.95, points: 250, color: PALETTE.magenta },
-    ],
-    ramps: [{ id: 'r1', pos: [-2.6, 1.8], size: [2.0, 0.3, 4.5], angle: 0.2, yaw: -0.5 }],
+    mode: 'solo',
+    accent: PALETTE.blue,
+    halves: [placeHalf(PLAYFIELD, { player: 0, side: 0, accent: PALETTE.blue })],
   }),
 
-  // Máquina 2: "2 Players" — cuatro bumpers en rombo y dos rampas.
-  machine2: createBaseLayout({
+  // Máquina 2: Multijugador — dos mesas lado a lado que comparten la zona de arriba.
+  machine2: createLayout({
     id: 'machine2',
     name: 'Púlsar',
-    players: 2,
+    mode: 'versus',
     accent: PALETTE.magenta,
-    bumpers: [
-      { id: 'b1', pos: [0, -7], radius: 0.85, points: 250, color: PALETTE.amber },
-      { id: 'b2', pos: [-3, -4], radius: 0.85, points: 100, color: PALETTE.magenta },
-      { id: 'b3', pos: [3, -4], radius: 0.85, points: 100, color: PALETTE.cyan },
-      { id: 'b4', pos: [0, -1.5], radius: 0.85, points: 150, color: PALETTE.violet },
+    halves: [
+      placeHalf(PLAYFIELD, { player: 0, side: -1, accent: PALETTE.blue }),
+      placeHalf(PLAYFIELD, { player: 1, side: 1, accent: PALETTE.red }),
     ],
-    ramps: [
-      { id: 'r1', pos: [-2.8, 2.6], size: [1.8, 0.3, 4], angle: 0.2, yaw: -0.5 },
-      { id: 'r2', pos: [2.8, 2.6], size: [1.8, 0.3, 4], angle: 0.2, yaw: 0.5 },
+    extraBumpers: [
+      { id: 'center-tri', pos: [0, -2.4], radius: 0.9, sides: 3, points: 250, color: PALETTE.violet },
     ],
+    // Isla central maciza entre las dos mesas: tapa el hueco del medio (punta en rombo arriba).
+    extraWalls: [
+      { id: 'island-cap', pos: [0, WALL_HEIGHT / 2, 0.45], size: [1.2, WALL_HEIGHT, 1.2], rotY: Math.PI / 4, color: PALETTE.violet, rail: true },
+      { id: 'island-top', pos: [0, WALL_HEIGHT / 2, 3.2], size: [1.8, WALL_HEIGHT, 5.6], rotY: 0, color: PALETTE.violet },
+      { id: 'island-low', pos: [0, WALL_HEIGHT / 2, 7.9], size: [3.6, WALL_HEIGHT, 3.8], rotY: 0, color: PALETTE.violet },
+    ],
+    core: { pos: [0, -6.2], radius: 1.25 },
   }),
 });
 
@@ -169,6 +223,7 @@ export class SceneManager {
   #cameraFlight = null; // { tween, resolve }
   #helperCamera = new THREE.PerspectiveCamera();
   #raycaster = new THREE.Raycaster();
+  #tablePlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   #tmpVec = new THREE.Vector3();
   #stars = null;
   #planet = null;
@@ -368,6 +423,21 @@ export class SceneManager {
     return hits[0]?.object.userData.machineId ?? null;
   }
 
+  /**
+   * Punto de la mesa bajo el cursor/dedo, en coordenadas del layout ([x, z]
+   * con el centro de la mesa en 0,0). Sirve para saber qué flipper se toca
+   * sin depender de cómo esté girada la cámara.
+   * @returns {{ x: number, z: number } | null}
+   */
+  pickTablePoint(ndcX, ndcY) {
+    if (!this.#level) return null;
+    this.#raycaster.setFromCamera({ x: ndcX, y: ndcY }, this.camera);
+    const hit = this.#raycaster.ray.intersectPlane(this.#tablePlane, this.#tmpVec);
+    if (!hit) return null;
+    const origin = this.#level.group.position;
+    return { x: hit.x - origin.x, z: hit.z - origin.z };
+  }
+
   /** Resalta una máquina (null = ninguna). */
   setHovered(id) {
     for (const machine of this.#machines.values()) {
@@ -408,13 +478,17 @@ export class SceneManager {
     };
   }
 
-  /** Pose cenital (vista de pájaro) sobre la mesa de una máquina. */
+  /**
+   * Pose cenital (vista de pájaro) sobre la mesa de una máquina.
+   * En multijugador la mesa es doble de ancha: J1 a la izquierda y J2 a la derecha.
+   */
   #getTopDownPose(machineId) {
     const base = this.#machines.get(machineId).basePosition;
+    const { table } = LEVEL_LAYOUTS[machineId];
     const tanHalf = Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
     // Margen extra arriba/abajo: deja sitio al HUD (puntuaciones y ayuda de teclas).
-    const heightForLength = (TABLE.length / 2 + 3) / tanHalf;
-    const heightForWidth = (TABLE.width / 2 + 1.5) / (tanHalf * this.camera.aspect);
+    const heightForLength = (table.length / 2 + 3) / tanHalf;
+    const heightForWidth = (table.width / 2 + 1.5) / (tanHalf * this.camera.aspect);
     return {
       position: new THREE.Vector3(base.x, Math.max(heightForLength, heightForWidth), 0),
       target: new THREE.Vector3(base.x, 0, 0),
@@ -520,13 +594,14 @@ export class SceneManager {
 
     const layout = LEVEL_LAYOUTS[machineId];
     const machine = this.#machines.get(machineId);
-    const { group, meshes, bumpers } = this.#buildLevelMeshes(layout);
+    const { group, meshes, bumpers, portal, ball, trail } = this.#buildLevelMeshes(layout);
 
     group.position.copy(machine.basePosition);
     group.scale.setScalar(0.55);
     this.scene.add(group);
-    machine.group.visible = false;
-    this.#level = { machineId, group, bumpers };
+    // Se ocultan todos los cubos del menú: la mesa doble es larga y podría taparse con el otro.
+    for (const { group: cube } of this.#machines.values()) cube.visible = false;
+    this.#level = { machineId, group, bumpers, portal, ball, trail };
 
     await new Promise((resolve) => {
       gsap.to(group.scale, { x: 1, y: 1, z: 1, duration: 0.7, ease: 'back.out(1.5)', onComplete: resolve });
@@ -546,11 +621,11 @@ export class SceneManager {
 
   unloadLevelImmediately() {
     if (!this.#level) return;
-    const { machineId, group } = this.#level;
+    const { group } = this.#level;
     gsap.killTweensOf(group.scale);
     this.scene.remove(group);
     disposeObject(group);
-    this.#machines.get(machineId).group.visible = true;
+    for (const { group: cube } of this.#machines.values()) cube.visible = true;
     this.#level = null;
     this.#activeMachineId = null;
   }
@@ -561,50 +636,107 @@ export class SceneManager {
     if (bumper) bumper.flash = 1;
   }
 
+  /** Habilidad Ninja: activa/desactiva el rastro que deja la bola invisible. */
+  setBallTrail(active) {
+    const trail = this.#level?.trail;
+    if (!trail) return;
+    trail.active = active;
+    trail.points.visible = active;
+    if (active) {
+      // Se rellena con la posición actual para que el rastro no salga del origen.
+      const { x, y, z } = this.#level.ball.position;
+      for (let i = 0; i < trail.positions.length; i += 3) trail.positions.set([x, y, z], i);
+      trail.points.geometry.attributes.position.needsUpdate = true;
+    }
+  }
+
+  /** Destello del portal central cuando la bola cruza de una mesa a otra (multijugador). */
+  flashPortal() {
+    if (this.#level?.portal) this.#level.portal.flash = 1;
+  }
+
   #buildLevelMeshes(layout) {
     const group = new THREE.Group();
     const accent = layout.accent;
     const bumpers = new Map();
 
-    const wallMaterial = new THREE.MeshStandardMaterial({
-      color: PALETTE.panel,
-      emissive: accent,
-      emissiveIntensity: 0.3,
-      metalness: 0.4,
-      roughness: 0.5,
-    });
-    const edgeMaterial = new THREE.LineBasicMaterial({ color: accent });
+    // Materiales de pared por color (cada mesa lleva el de su jugador).
+    const wallMaterials = new Map();
+    const wallMaterialsFor = (color) => {
+      if (!wallMaterials.has(color)) {
+        wallMaterials.set(color, {
+          wall: new THREE.MeshStandardMaterial({ color: PALETTE.panel, emissive: color, emissiveIntensity: 0.3, metalness: 0.4, roughness: 0.5 }),
+          edge: new THREE.LineBasicMaterial({ color }),
+        });
+      }
+      return wallMaterials.get(color);
+    };
+    // Raíles cromados como los de las máquinas reales.
+    const railMaterial = new THREE.MeshStandardMaterial({ color: 0xd8dcf0, emissive: 0x2a2a44, metalness: 0.95, roughness: 0.22 });
 
     // --- Mesa ------------------------------------------------------------
+    const { table } = layout;
     const base = new THREE.Mesh(
-      new THREE.BoxGeometry(TABLE.width + 1.4, 0.5, TABLE.length + 1.4),
+      new THREE.BoxGeometry(table.width + 1.4, 0.5, table.length + 1.4),
       new THREE.MeshStandardMaterial({ color: 0x0d0a30, roughness: 0.9 })
     );
     base.position.y = -0.25;
     group.add(base);
 
-    const surface = new THREE.Mesh(
-      new THREE.PlaneGeometry(TABLE.width, TABLE.length),
-      new THREE.MeshStandardMaterial({ map: this.#makeTableTexture(accent), roughness: 0.6, metalness: 0.1 })
-    );
-    surface.rotation.x = -Math.PI / 2;
-    surface.position.y = 0.01;
-    group.add(surface);
+    // Una superficie por media mesa, con el color de su jugador.
+    for (const half of layout.halves) {
+      const surface = new THREE.Mesh(
+        new THREE.PlaneGeometry(TABLE.width, TABLE.length),
+        new THREE.MeshStandardMaterial({ map: this.#makeTableTexture(half.accent), roughness: 0.6, metalness: 0.1 })
+      );
+      surface.rotation.x = -Math.PI / 2;
+      surface.position.set(half.centerX, 0.01, 0);
+      group.add(surface);
+    }
+
+    // --- Portal (solo multijugador): línea central de la zona compartida, brilla al cruzar ---
+    let portal = null;
+    if (layout.core) {
+      const material = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.4, depthWrite: false });
+      const { pos, radius } = layout.core;
+      const mesh = new THREE.Mesh(new THREE.RingGeometry(radius * 0.8, radius, 40), material);
+      mesh.rotation.x = -Math.PI / 2;
+      mesh.position.set(pos[0], 0.03, pos[1]);
+      group.add(mesh);
+      portal = { material, mesh, flash: 0 };
+    }
 
     // --- Paredes y guías ---------------------------------------------------
     for (const wall of layout.walls) {
+      const { wall: wallMaterial, edge } = wallMaterialsFor(wall.color ?? accent);
       const geometry = new THREE.BoxGeometry(...wall.size);
       const mesh = new THREE.Mesh(geometry, wallMaterial);
-      mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geometry), edgeMaterial));
+      mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geometry), edge));
+      if (wall.rail) {
+        // Tubo a lo largo de la pared (su eje largo es X, salvo las paredes laterales, que van en Z).
+        const alongZ = wall.size[2] > wall.size[0];
+        const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, alongZ ? wall.size[2] : wall.size[0], 10), railMaterial);
+        rail.rotation.set(alongZ ? Math.PI / 2 : 0, 0, alongZ ? 0 : Math.PI / 2);
+        rail.position.y = wall.size[1] / 2 + 0.12;
+        mesh.add(rail);
+      }
       mesh.position.set(...wall.pos);
       mesh.rotation.y = wall.rotY ?? 0;
       group.add(mesh);
     }
 
-    // --- Bumpers -----------------------------------------------------------
+    // --- Bumpers (sides = polígono: triángulo, rombo...) y estrellas -------
     for (const def of layout.bumpers) {
       const material = new THREE.MeshStandardMaterial({ color: 0x120d3a, emissive: def.color, emissiveIntensity: 0.9, roughness: 0.4 });
-      const body = new THREE.Mesh(new THREE.CylinderGeometry(def.radius, def.radius, 1.2, 32), material);
+      if (def.star) {
+        const star = new THREE.Mesh(new THREE.OctahedronGeometry(def.radius), material);
+        star.scale.y = 0.4;
+        star.position.set(def.pos[0], 0.2, def.pos[1]);
+        group.add(star);
+        bumpers.set(def.id, { material, ring: star, flash: 0 });
+        continue;
+      }
+      const body = new THREE.Mesh(new THREE.CylinderGeometry(def.radius, def.radius, 1.2, def.sides ?? 32), material);
       body.position.set(def.pos[0], 0.6, def.pos[1]);
 
       const ring = new THREE.Mesh(
@@ -619,23 +751,6 @@ export class SceneManager {
       bumpers.set(def.id, { material, ring, flash: 0 });
     }
 
-    // --- Rampas ------------------------------------------------------------
-    for (const def of layout.ramps) {
-      const [width, thickness, length] = def.size;
-      const geometry = new THREE.BoxGeometry(width, thickness, length);
-      const mesh = new THREE.Mesh(
-        geometry,
-        new THREE.MeshStandardMaterial({ color: accent, emissive: accent, emissiveIntensity: 0.35, transparent: true, opacity: 0.6 })
-      );
-      mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geometry), new THREE.LineBasicMaterial({ color: 0xffffff })));
-      mesh.rotation.order = 'YXZ'; // primero inclina (X), luego gira en diagonal (Y)
-      mesh.rotation.y = def.yaw ?? 0;
-      mesh.rotation.x = def.angle;
-      // Misma fórmula que physics.js: el extremo bajo toca el suelo.
-      mesh.position.set(def.pos[0], (thickness / 2) * Math.cos(def.angle) + (length / 2) * Math.sin(def.angle), def.pos[1]);
-      group.add(mesh);
-    }
-
     // --- Flippers (grupo en el pivote; la caja se desplaza para girar sobre su extremo) ---
     const flipperMeshes = {};
     for (const def of layout.flippers) {
@@ -644,13 +759,13 @@ export class SceneManager {
 
       const arm = new THREE.Mesh(
         new THREE.BoxGeometry(def.length, 0.8, def.thickness),
-        new THREE.MeshStandardMaterial({ color: 0x2a1f6b, emissive: PALETTE.amber, emissiveIntensity: 0.8, roughness: 0.4 })
+        new THREE.MeshStandardMaterial({ color: 0x2a1f6b, emissive: def.color, emissiveIntensity: 0.8, roughness: 0.4 })
       );
       arm.position.x = (dir * def.length) / 2;
 
       const cap = new THREE.Mesh(
         new THREE.CylinderGeometry(0.42, 0.42, 0.9, 20),
-        new THREE.MeshStandardMaterial({ color: 0x2a1f6b, emissive: PALETTE.amber, emissiveIntensity: 1.2 })
+        new THREE.MeshStandardMaterial({ color: 0x2a1f6b, emissive: def.color, emissiveIntensity: 1.2 })
       );
 
       flipper.add(arm, cap);
@@ -669,12 +784,46 @@ export class SceneManager {
     ball.add(new THREE.PointLight(PALETTE.amber, 14, 9, 2)); // la bola ilumina la mesa
     group.add(ball);
 
-    // Luz general de la mesa
-    const tableLight = new THREE.PointLight(accent, 260, 45, 2);
-    tableLight.position.set(0, 10, 0);
-    group.add(tableLight);
+    // Rastro de la habilidad Ninja: últimas posiciones de la bola invisible.
+    const TRAIL_POINTS = 60;
+    const trailPositions = new Float32Array(TRAIL_POINTS * 3);
+    const trailGeometry = new THREE.BufferGeometry();
+    trailGeometry.setAttribute('position', new THREE.BufferAttribute(trailPositions, 3));
+    const trailPoints = new THREE.Points(
+      trailGeometry,
+      new THREE.PointsMaterial({ color: PALETTE.amber, size: 0.22, transparent: true, opacity: 0.55, depthWrite: false })
+    );
+    trailPoints.visible = false;
+    trailPoints.frustumCulled = false;
+    group.add(trailPoints);
+    const trail = { points: trailPoints, positions: trailPositions, active: false };
 
-    return { group, meshes: { ball, flippers: flipperMeshes }, bumpers };
+    // --- Muelles: cabeza octogonal (como en el modelo) + resorte detrás ------
+    const plungerMeshes = {};
+    for (const def of layout.plungers) {
+      const plunger = new THREE.Group();
+      const head = new THREE.Mesh(
+        new THREE.CylinderGeometry(def.width / 2, def.width / 2, 0.6, 8),
+        new THREE.MeshStandardMaterial({ color: 0x2a1f6b, emissive: def.color, emissiveIntensity: 1.1 })
+      );
+      head.rotation.x = Math.PI / 2;
+      const spring = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 1.6, 10), railMaterial);
+      spring.rotation.x = Math.PI / 2;
+      spring.position.z = 1.1;
+      plunger.add(head, spring);
+      plunger.position.set(def.pos[0], 0.4, def.pos[1]);
+      group.add(plunger);
+      plungerMeshes[def.id] = plunger;
+    }
+
+    // Luz general: una por mesa, sobre su centro y con su color
+    for (const half of layout.halves) {
+      const tableLight = new THREE.PointLight(half.accent, 220, 40, 2);
+      tableLight.position.set(half.centerX, 10, 0);
+      group.add(tableLight);
+    }
+
+    return { group, meshes: { ball, flippers: flipperMeshes, plungers: plungerMeshes }, bumpers, portal, ball, trail };
   }
 
   /** Textura de la mesa dibujada en un canvas: estrellas, rejilla y órbitas. */
@@ -760,6 +909,20 @@ export class SceneManager {
         bumper.flash = Math.max(0, bumper.flash - dt * 4);
         bumper.material.emissiveIntensity = 0.9 + bumper.flash * 3.5;
         bumper.ring.scale.setScalar(1 + bumper.flash * 0.18);
+      }
+
+      const { trail, ball } = this.#level;
+      if (trail.active) {
+        trail.positions.copyWithin(3, 0, trail.positions.length - 3);
+        trail.positions.set([ball.position.x, ball.position.y, ball.position.z], 0);
+        trail.points.geometry.attributes.position.needsUpdate = true;
+      }
+
+      const { portal } = this.#level;
+      if (portal) {
+        portal.flash = Math.max(0, portal.flash - dt * 2.5);
+        portal.material.opacity = 0.3 + Math.sin(elapsed * 3) * 0.1 + portal.flash * 0.6;
+        portal.mesh.scale.setScalar(1 + portal.flash * 0.5);
       }
     }
   }
