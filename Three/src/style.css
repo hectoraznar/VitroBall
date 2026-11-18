@@ -16,7 +16,8 @@
   --font-display: 'Bungee', 'Arial Black', Impact, sans-serif;
   --font-body: 'Chakra Petch', 'Segoe UI', system-ui, sans-serif;
 
-  --fade: 300ms; /* debe coincidir con FADE_MS en uiManager.js */
+  --fade: 300ms;
+  /* debe coincidir con FADE_MS en uiManager.js */
 }
 
 *,
@@ -60,7 +61,8 @@ button {
   width: 100%;
   height: 100%;
   display: block;
-  opacity: 0; /* aparece con fundido al terminar la carga */
+  opacity: 0;
+  /* aparece con fundido al terminar la carga */
   transition: opacity 1.1s ease;
   touch-action: none;
 }
@@ -248,7 +250,8 @@ kbd {
   position: absolute;
   left: 0;
   top: 0;
-  visibility: hidden; /* uiManager lo muestra cuando ya conoce su posición */
+  visibility: hidden;
+  /* uiManager lo muestra cuando ya conoce su posición */
   pointer-events: auto;
   cursor: pointer;
   padding: 0.5rem 1.2rem;
@@ -348,7 +351,7 @@ kbd {
   background: rgba(27, 20, 80, 0.45);
 }
 
-.controls > div {
+.controls>div {
   display: grid;
   grid-template-columns: minmax(7.5rem, 11rem) 1fr;
   align-items: center;
@@ -580,7 +583,7 @@ kbd {
   gap: 0.6rem;
 }
 
-.styles__row > span {
+.styles__row>span {
   min-width: 6.5rem;
   font-weight: 600;
 }
@@ -637,16 +640,61 @@ kbd {
 }
 
 /* --------------------------------------------------------------------------
+   HUD Multiplicador (Abajo a la derecha)
+   -------------------------------------------------------------------------- */
+.hud__multiplier {
+  position: absolute;
+  bottom: max(1rem, env(safe-area-inset-bottom));
+  right: 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  padding: 0.6rem 1rem;
+  border: 2px solid var(--neon-cyan);
+  border-radius: 0.8rem;
+  background: rgba(8, 5, 32, 0.85);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 0 15px rgba(53, 240, 255, 0.2);
+  transition: border-color 0.3s, color 0.3s;
+  pointer-events: none;
+}
+
+.hud__multiplier[hidden] {
+  display: none !important;
+}
+
+.hud__multiplier-label {
+  font-size: 0.75rem;
+  color: var(--ink-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.hud__multiplier-value {
+  font-family: var(--font-display);
+  font-size: 1.8rem;
+  line-height: 1;
+  color: inherit;
+}
+
+.hud__multiplier-time {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: inherit;
+}
+
+/* --------------------------------------------------------------------------
    Responsive y accesibilidad
    -------------------------------------------------------------------------- */
 @media (max-width: 560px) {
-  .controls > div {
+  .controls>div {
     grid-template-columns: 1fr;
     gap: 0.3rem;
   }
 
   .hud__scores {
-    top: 3.8rem; /* deja libre la esquina del botón Salir */
+    top: 3.8rem;
+    /* deja libre la esquina del botón Salir */
   }
 }
 
@@ -658,6 +706,7 @@ kbd {
 }
 
 @media (prefers-reduced-motion: reduce) {
+
   #webgl,
   .layer,
   .loading,

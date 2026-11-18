@@ -1,20 +1,10 @@
 /**
  * src/js/uiManager.js
- * ---------------------------------------------------------------------------
- * Toda la interfaz HTML/CSS superpuesta al canvas: pantalla de carga, menú
- * (etiquetas sobre las máquinas + botones), páginas a pantalla completa y HUD.
- *
- * Regla de oro: este archivo NO importa Three.js ni Cannon. Solo recibe datos
- * (posiciones en píxeles, puntuaciones) y avisa con callbacks cuando el
- * usuario hace algo. Quien decide qué ocurre es main.js.
- * ---------------------------------------------------------------------------
  */
-
 import { LoadingScreen } from './loadingScreen.js';
 
-const FADE_MS = 300; // debe coincidir con la transición de opacidad de .layer en style.css
+const FADE_MS = 300;
 
-/** Explicación de los estilos y su habilidad (común a los dos modos). */
 const VITRO_HELP = `
   <h3 class="page__subtitle">¡VITRO! — habilidades</h3>
   <ul class="rules">
@@ -24,9 +14,7 @@ const VITRO_HELP = `
   </ul>
 `;
 
-/** Contenido de las páginas a pantalla completa (texto provisional, edítalo a tu gusto). */
 const PAGES = {
-  // Las pestañas [data-mode] cambian de panel y los botones [data-play] arrancan esa máquina.
   HOW_TO_PLAY: {
     title: 'Cómo jugar',
     html: `
@@ -92,23 +80,11 @@ const PAGES = {
 };
 
 export class UIManager {
-  /**
-   * @param {HTMLElement} root  Contenedor #ui-root
-   * @param {{
-   *   onSelectMachine: (id: string) => void,
-   *   onHoverMachine: (id: string|null) => void,
-   *   onOpenPage: (page: 'HOW_TO_PLAY'|'HISTORY') => void,
-   *   onPlayMachine: (id: string) => void,
-   *   onBackToMenu: () => void,
-   *   onExitGame: () => void,
-   *   onRestart: () => void,
-   * }} callbacks
-   */
   constructor(root, callbacks) {
     this.root = root;
     this.callbacks = callbacks;
     this.loading = null;
-    this.labels = new Map(); // id -> HTMLElement
+    this.labels = new Map();
 
     this.menuLayer = this.#buildMenu();
     this.pageLayer = this.#buildPage();
@@ -116,40 +92,14 @@ export class UIManager {
     root.append(this.menuLayer, this.pageLayer, this.hudLayer);
   }
 
-  // ------------------------------------------------------------------------
-  // Pantalla de carga
-  // ------------------------------------------------------------------------
-
-  showLoading() {
-    this.loading = new LoadingScreen(this.root);
-    this.loading.start();
-  }
-
-  setLoadingProgress(progress) {
-    this.loading?.setProgress(progress);
-  }
-
-  async hideLoading() {
-    await this.loading?.hide();
-    this.loading = null;
-  }
-
-  /** Muestra el canvas 3D con un fundido (el CSS hace la transición). */
-  revealScene() {
-    document.body.classList.add('scene-ready');
-  }
-
-  setCursor(cursor) {
-    document.body.style.cursor = cursor;
-  }
-
-  // ------------------------------------------------------------------------
-  // Menú principal
-  // ------------------------------------------------------------------------
+  showLoading() { this.loading = new LoadingScreen(this.root); this.loading.start(); }
+  setLoadingProgress(progress) { this.loading?.setProgress(progress); }
+  async hideLoading() { await this.loading?.hide(); this.loading = null; }
+  revealScene() { document.body.classList.add('scene-ready'); }
+  setCursor(cursor) { document.body.style.cursor = cursor; }
 
   #buildMenu() {
     const layer = this.#createLayer('menu');
-
     const machines = [
       { id: 'machine1', text: 'Solitario' },
       { id: 'machine2', text: 'Multijugador' },
@@ -168,7 +118,6 @@ export class UIManager {
       this.labels.set(id, label);
       layer.append(label);
     }
-
     const nav = document.createElement('nav');
     nav.className = 'menu-nav';
     nav.setAttribute('aria-label', 'Menú principal');
@@ -181,32 +130,18 @@ export class UIManager {
       if (page) this.callbacks.onOpenPage(page);
     });
     layer.append(nav);
-
     return layer;
   }
 
-  showMenu() {
-    return this.#show(this.menuLayer);
-  }
+  showMenu() { return this.#show(this.menuLayer); }
+  hideMenu() { return this.#hide(this.menuLayer); }
 
-  hideMenu() {
-    return this.#hide(this.menuLayer);
-  }
-
-  /**
-   * Coloca la etiqueta de una máquina en coordenadas de pantalla.
-   * Se llama cada frame mientras el menú está activo.
-   */
   setMachineLabelPosition(id, x, y, visible) {
     const label = this.labels.get(id);
     if (!label) return;
     label.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -100%)`;
     label.style.visibility = visible ? 'visible' : 'hidden';
   }
-
-  // ------------------------------------------------------------------------
-  // Páginas a pantalla completa (Cómo jugar / Historia)
-  // ------------------------------------------------------------------------
 
   #buildPage() {
     const layer = this.#createLayer('page');
@@ -220,8 +155,6 @@ export class UIManager {
       </article>
     `;
     layer.querySelector('.page__back').addEventListener('click', () => this.callbacks.onBackToMenu());
-
-    // Selector de modo y botones "Jugar" de la página Cómo jugar (el contenido se regenera en showPage).
     layer.querySelector('.page__body').addEventListener('click', (event) => {
       const tab = event.target.closest('[data-mode]');
       if (tab) this.#selectMode(tab.dataset.mode);
@@ -241,7 +174,6 @@ export class UIManager {
     this.pageLayer.querySelector('.page__back').focus({ preventScroll: true });
   }
 
-  /** Muestra el panel de un modo en la página Cómo jugar (no hace nada en otras páginas). */
   #selectMode(mode) {
     this.pageLayer.querySelectorAll('[data-mode]').forEach((tab) => {
       tab.setAttribute('aria-selected', String(tab.dataset.mode === mode));
@@ -251,13 +183,7 @@ export class UIManager {
     });
   }
 
-  hidePage() {
-    return this.#hide(this.pageLayer);
-  }
-
-  // ------------------------------------------------------------------------
-  // HUD de partida
-  // ------------------------------------------------------------------------
+  hidePage() { return this.#hide(this.pageLayer); }
 
   #buildHud() {
     const layer = this.#createLayer('hud');
@@ -282,6 +208,11 @@ export class UIManager {
         </p>
         <button type="button" class="btn btn--play" data-action="start">¡A jugar!</button>
       </div>
+      <div class="hud__multiplier" hidden>
+        <span class="hud__multiplier-label">Multiplicador</span>
+        <span class="hud__multiplier-value">x1</span>
+        <span class="hud__multiplier-time">0s</span>
+      </div>
     `;
     layer.querySelector('[data-action="start"]').addEventListener('click', () => this.callbacks.onStart());
     layer.querySelector('.styles__rows').addEventListener('click', (event) => {
@@ -297,7 +228,6 @@ export class UIManager {
     return layer;
   }
 
-  /** @param {{ players: number, mode: 'solo'|'versus' }} info */
   showHud({ players, mode }) {
     const scores = this.hudLayer.querySelector('.hud__scores');
     scores.innerHTML = Array.from(
@@ -318,12 +248,6 @@ export class UIManager {
     return this.#show(this.hudLayer);
   }
 
-  /**
-   * @param {number[]} scores
-   * @param {number} activePlayer  Jugador resaltado (en multijugador, el que tiene la bola en su mesa).
-   * @param {number[]} balls  Bolas que le quedan a cada jugador.
-   * @param {number} maxBalls
-   */
   updateScores(scores, activePlayer, balls, maxBalls) {
     this.hudLayer.querySelectorAll('.score').forEach((el, i) => {
       el.classList.toggle('is-active', i === activePlayer);
@@ -334,11 +258,6 @@ export class UIManager {
     });
   }
 
-  /**
-   * Estado VITRO de cada jugador: lista, recargando o en TILT.
-   * Se llama cada frame, así que solo toca el DOM si el texto cambia.
-   * @param {{ cooldown: number, tilt: number }[]} states
-   */
   updateVitro(states) {
     this.hudLayer.querySelectorAll('.score__vitro').forEach((el, i) => {
       const { cooldown, tilt } = states[i];
@@ -350,7 +269,31 @@ export class UIManager {
     });
   }
 
-  /** Selector de estilo antes de empezar. @param {string[]} styles  Estilo actual de cada jugador. */
+  updateMultiplierUI(value, timeLeft, isBubble) {
+    const el = this.hudLayer.querySelector('.hud__multiplier');
+    if (!el) return;
+
+    if (value === null) {
+      el.hidden = true;
+      return;
+    }
+
+    el.hidden = false;
+    el.querySelector('.hud__multiplier-value').textContent = `x${value}`;
+    el.querySelector('.hud__multiplier-time').textContent = `${Math.ceil(timeLeft)}s`;
+
+    const label = el.querySelector('.hud__multiplier-label');
+    label.textContent = isBubble ? 'Burbuja en mesa' : 'Efecto activo';
+
+    if (value >= 1) {
+      el.style.borderColor = 'var(--neon-cyan)';
+      el.style.color = 'var(--neon-cyan)';
+    } else {
+      el.style.borderColor = '#ff4d6d';
+      el.style.color = '#ff4d6d';
+    }
+  }
+
   showStylePicker(styles) {
     const panel = this.hudLayer.querySelector('.hud__styles');
     panel.querySelector('.styles__rows').innerHTML = styles
@@ -379,7 +322,6 @@ export class UIManager {
     if (label) label.textContent = `Jugador ${player + 1} · ${style === 'ninja' ? 'Ninja' : 'Default'}`;
   }
 
-  /** Panel de fin de partida. @param {{ title: string, text: string }} result */
   showGameOver({ title, text }) {
     const panel = this.hudLayer.querySelector('.hud__over');
     panel.querySelector('.hud__over-title').textContent = title;
@@ -396,10 +338,6 @@ export class UIManager {
     return this.#hide(this.hudLayer);
   }
 
-  // ------------------------------------------------------------------------
-  // Utilidades de capas
-  // ------------------------------------------------------------------------
-
   #createLayer(name) {
     const layer = document.createElement('section');
     layer.className = `layer layer--${name}`;
@@ -409,7 +347,7 @@ export class UIManager {
 
   #show(layer) {
     layer.hidden = false;
-    void layer.offsetWidth; // fuerza el reflow para que la transición de opacidad se dispare
+    void layer.offsetWidth;
     layer.classList.add('is-visible');
   }
 
