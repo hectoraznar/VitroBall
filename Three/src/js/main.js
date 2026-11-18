@@ -32,7 +32,7 @@ if (USE_BLOOM) {
   composer.addPass(new OutputPass());
 }
 
-const RULES = Object.freeze({ balls: 3, crossPoints: 50, drainBonus: 500, corePoints: 300 });
+const RULES = Object.freeze({ balls: 3, crossPoints: 50, corePoints: 300 });
 const VITRO = Object.freeze({ cooldown: { default: 1.2, ninja: 15 }, ninjaTime: 5, tiltShakes: 3, tiltWindow: 6, tiltTime: 3 });
 const MULT_CONFIG = Object.freeze({ values: [2, 4, 0.5, 0.25], spawnCooldown: 4, bubbleLife: 10, buffDuration: 10 });
 
@@ -109,47 +109,52 @@ function useVitro(player) {
 function tickMultipliers(dt) {
   if (!session.started || session.over) return;
 
-  // 1. Actualizar Buff Activado (y actualizar la UI cada frame)
   if (session.activeBuffTimer > 0) {
     session.activeBuffTimer -= dt;
     if (session.activeBuffTimer <= 0) {
-      session.activeMultiplier = 1; // Se acaba el efecto
+      session.activeMultiplier = 1;
       session.activeBuffTimer = 0;
       ui.updateMultiplierUI(null, 0, false);
     } else {
-      // Actualizamos la UI mientras el buff está activo para que baje el tiempo
       ui.updateMultiplierUI(session.activeMultiplier, session.activeBuffTimer, false);
     }
   }
 
-  // 2. Actualizar Burbuja en la Mesa
   if (session.tableBubble) {
     session.tableBubble.timeLeft -= dt;
     if (session.tableBubble.timeLeft <= 0) {
-      // Desaparece sin coger
       session.tableBubble = null;
       sceneManager.hideMultiplier();
       physics.removeMultiplierTrigger();
       session.spawnTimer = MULT_CONFIG.spawnCooldown;
-
       if (session.activeBuffTimer <= 0) ui.updateMultiplierUI(null, 0, false);
     } else {
-      // Solo actualizamos la UI de la burbuja si el jugador NO tiene un buff activo
       if (session.activeBuffTimer <= 0) {
         ui.updateMultiplierUI(session.tableBubble.value, session.tableBubble.timeLeft, true);
       }
     }
   }
-  // 3. Spawnear nueva Burbuja si no hay
   else if (session.activeBuffTimer <= 0) {
     session.spawnTimer -= dt;
     if (session.spawnTimer <= 0) {
       const value = MULT_CONFIG.values[Math.floor(Math.random() * MULT_CONFIG.values.length)];
+      const layout = LEVEL_LAYOUTS[currentLevel.machineId];
 
-      // --- NUEVAS COORDENADAS SEGURAS ---
-      // X: de -2 a +4 (centro-derecha, evitando el carril de la izquierda y las paredes)
-      // Z: de -5 a +3 (evitando los flippers y el desagüe)
-      const px = -2 + Math.random() * 6;
+      let px;
+      if (layout.mode === 'solo') {
+        // Zona segura solitario: x de -9 a -3
+        px = -9 + Math.random() * 6;
+      } else {
+        // Multijugador: lado izquierdo (J1) o derecho (J2)
+        const isLeft = Math.random() < 0.5;
+        if (isLeft) {
+          px = -9 + Math.random() * 6; // De -9 a -3
+        } else {
+          px = 3 + Math.random() * 6;  // De 3 a 9 (espejo)
+        }
+      }
+
+      // Z: de -5 a +3 para evitar flippers y desagüe
       const pz = -5 + Math.random() * 8;
       const pos = [px, pz];
 
@@ -224,23 +229,18 @@ const physics = new PhysicsWorld({
     if (session.over) return;
     session.balls[player] -= 1;
     session.ballSide = player;
+    // Los puntos al rival han sido eliminados
     refreshHud();
     if (session.balls[player] === 0) endGame(player);
   },
   onMultiplierHit: (value) => {
     if (!session.tableBubble) return;
-
-    // El jugador ha cogido la burbuja
     session.activeMultiplier = value;
     session.activeBuffTimer = MULT_CONFIG.buffDuration;
-
-    // Quitar burbuja de la mesa
     session.tableBubble = null;
     sceneManager.hideMultiplier();
     physics.removeMultiplierTrigger();
     session.spawnTimer = MULT_CONFIG.spawnCooldown;
-
-    // Forzar la actualización inmediata de la UI
     ui.updateMultiplierUI(value, MULT_CONFIG.buffDuration, false);
   },
 });

@@ -53,7 +53,7 @@ const PAGES = {
           <li>Cada jugador tiene <strong>3 bolas</strong>.</li>
           <li>Regla de oro: los puntos de una mitad son de quien juega en ella. Las piezas del centro puntúan para quien golpeó la bola por última vez.</li>
           <li>Meter la bola en El Núcleo: <strong>+300</strong>. Pasarla a la mesa rival: <strong>+50</strong>.</li>
-          <li>Si la bola cae por tu desagüe, pierdes una bola y tu rival gana <strong>+500</strong>. La siguiente bola sale de tu muelle.</li>
+          <li>Si la bola cae por tu desagüe, pierdes una bola. La siguiente bola sale de tu muelle.</li>
           <li>Si te quedas sin bolas y tu rival aún tiene alguna, <strong>gana él al instante</strong>.</li>
         </ul>
         <dl class="controls">

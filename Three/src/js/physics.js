@@ -42,6 +42,7 @@ export class PhysicsWorld {
     this.#createTable(layout);
     this.#createWalls(layout);
     this.#createBumpers(layout);
+    this.#createBoosts(layout); // <-- NUEVO
     this.#createFlippers(layout, meshes.flippers);
     this.#createPlungers(layout, meshes.plungers);
     this.#createBall(layout);
@@ -54,11 +55,7 @@ export class PhysicsWorld {
     if (!this.world) return;
 
     const body = new CANNON.Body({ mass: 0, material: this.mats.bumper, isTrigger: true });
-
-    // REDUCIDO: Cilindro de colisión más pequeño (radio de 1.2 a 0.8, altura de 1.5 a 1.2)
     body.addShape(new CANNON.Cylinder(0.8, 0.8, 1.2, 20));
-
-    // Bajamos la altura del trigger
     body.position.set(pos[0], 0.6, pos[1]);
     body.userData = { type: 'multiplier', value: value, lastHit: -Infinity };
     this.world.addBody(body);
@@ -177,6 +174,22 @@ export class PhysicsWorld {
     }
   }
 
+  #createBoosts({ boosts }) {
+    if (!boosts) return;
+    for (const def of boosts) {
+      const body = new CANNON.Body({ mass: 0, material: this.mats.wall, isTrigger: true });
+      body.addShape(new CANNON.Box(new CANNON.Vec3(1.5, 1, 1.5)));
+      body.position.set(def.pos[0], 0.5, def.pos[1]);
+
+      const dirX = -Math.sin(def.rotY);
+      const dirZ = -Math.cos(def.rotY);
+
+      // Guardamos la velocidad que viene desde el layout (def.speed)
+      body.userData = { type: 'boost', dirX, dirZ, speed: def.speed ?? 20, lastHit: -Infinity };
+      this.world.addBody(body);
+    }
+  }
+
   #createFlippers({ flippers }, flipperMeshes) {
     for (const def of flippers) {
       const dir = def.side === 'left' ? 1 : -1;
@@ -215,6 +228,18 @@ export class PhysicsWorld {
         if (this._time - data.lastHit > 1) {
           this.callbacks.onMultiplierHit?.(data.value);
           data.lastHit = this._time;
+        }
+      }
+      else if (data?.type === 'boost') {
+        if (this._time - data.lastHit > 1) {
+          data.lastHit = this._time;
+
+          // Usamos la velocidad específica del boost
+          this.ball.velocity.x = data.dirX * data.speed;
+          this.ball.velocity.z = data.dirZ * data.speed;
+          this.ball.velocity.y = 3;
+
+          this.callbacks.onBoostHit?.();
         }
       }
     };

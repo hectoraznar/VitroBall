@@ -3,6 +3,7 @@
  */
 import * as THREE from 'three';
 import gsap from 'gsap';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
 export const MACHINE_IDS = ['machine1', 'machine2'];
 
@@ -54,6 +55,7 @@ const PLAYFIELD = {
       id: `star-${i}`, pos, radius: 0.35, points: 50, star: true, color: PALETTE.amber,
     })),
   ],
+  boosts: [],
   flippers: [flipperDef('left', [-7.4, 7.2]), flipperDef('right', [-3.0, 7.2])],
   lane: [-12, -10.55],
   plunger: [-11.27, 8.6],
@@ -74,6 +76,7 @@ function placeHalf(def, { player, side, accent }) {
     spawn: point(def.spawn),
     walls: def.walls.map(([id, a, b, opts]) => ({ ...wallBetween(tag(id), point(a), point(b)), ...opts, color: accent })),
     bumpers: def.bumpers.map((b) => ({ ...b, id: tag(b.id), pos: point(b.pos), color: b.color ?? accent })),
+    boosts: def.boosts.map((b) => ({ ...b, id: tag(b.id), pos: point(b.pos), rotY: mirror ? -b.rotY : b.rotY })),
     flippers: def.flippers.map((f) => {
       const s = mirror ? swap[f.side] : f.side;
       return { ...flipperDef(s, point(f.pivot), f.length), id: tag(`flipper-${s}`), player, color: accent };
@@ -82,7 +85,7 @@ function placeHalf(def, { player, side, accent }) {
   };
 }
 
-function createLayout({ id, name, mode, accent, halves, extraBumpers = [], extraWalls = [], core = null }) {
+function createLayout({ id, name, mode, accent, halves, extraBumpers = [], extraWalls = [], extraBoosts = [], core = null }) {
   const T = WALL_THICKNESS;
   const width = TABLE.width * halves.length;
   const hw = width / 2;
@@ -98,6 +101,11 @@ function createLayout({ id, name, mode, accent, halves, extraBumpers = [], extra
       ...halves.flatMap((half) => half.walls), ...extraWalls,
     ],
     bumpers: [...halves.flatMap((half) => half.bumpers), ...extraBumpers],
+    // Aquí unimos los boosts de las mitades (si los hubiera) con los extras
+    boosts: [
+      ...halves.flatMap((half) => half.boosts || []),
+      ...extraBoosts
+    ],
     flippers: halves.flatMap((half) => half.flippers),
     plungers: halves.map((half) => half.plunger),
     core, ball: { radius: 0.35 },
@@ -108,7 +116,13 @@ export const LEVEL_LAYOUTS = Object.freeze({
   machine1: createLayout({
     id: 'machine1', name: 'Nebulosa', mode: 'solo', accent: PALETTE.blue,
     halves: [placeHalf(PLAYFIELD, { player: 0, side: 0, accent: PALETTE.blue })],
+    extraBoosts: [
+      // Boosts normales para solitario
+      { id: 'b1', pos: [-5, 1.5], rotY: 0, speed: 20 },
+      { id: 'b2', pos: [-5, -2.0], rotY: Math.PI, speed: 20 }
+    ]
   }),
+
   machine2: createLayout({
     id: 'machine2', name: 'Púlsar', mode: 'versus', accent: PALETTE.magenta,
     halves: [
@@ -120,6 +134,13 @@ export const LEVEL_LAYOUTS = Object.freeze({
       { id: 'island-cap', pos: [0, WALL_HEIGHT / 2, 0.45], size: [1.2, WALL_HEIGHT, 1.2], rotY: Math.PI / 4, color: PALETTE.violet, rail: true },
       { id: 'island-top', pos: [0, WALL_HEIGHT / 2, 3.2], size: [1.8, WALL_HEIGHT, 5.6], rotY: 0, color: PALETTE.violet },
       { id: 'island-low', pos: [0, WALL_HEIGHT / 2, 7.9], size: [3.6, WALL_HEIGHT, 3.8], rotY: 0, color: PALETTE.violet },
+    ],
+    // AQUÍ VAN LOS 2 BOOSTS DE MULTIJUGADOR
+    extraBoosts: [
+      // Boost izquierdo (J1): Apunta a la DERECHA (rotY: -Math.PI / 2), mucha velocidad (speed: 35)
+      { id: 'boost-j1', pos: [-6, 0], rotY: -Math.PI / 2, speed: 35 },
+      // Boost derecho (J2): Apunta a la IZQUIERDA (rotY: Math.PI / 2), mucha velocidad (speed: 35)
+      { id: 'boost-j2', pos: [6, 0], rotY: Math.PI / 2, speed: 35 }
     ],
     core: { pos: [0, -6.2], radius: 1.25 },
   }),
@@ -150,6 +171,7 @@ export class SceneManager {
   #planet = null;
   #built = false;
   #activeMultiplierMesh = null;
+  models = {};
 
   constructor({ aspect }) {
     this.scene = new THREE.Scene();
@@ -162,6 +184,26 @@ export class SceneManager {
   async loadAssets(onProgress = () => { }) {
     const steps = 22;
     for (let i = 1; i <= steps; i++) { await sleep(100); onProgress(i / steps); }
+
+    const loader = new GLTFLoader();
+    const loadModel = async (name) => {
+      try {
+        const url = new URL(`../assets/models/${name}.glb`, import.meta.url).href;
+        return await loader.loadAsync(url);
+      } catch (e) {
+        console.warn(`⚠️ No se pudo cargar ${name}.glb`);
+        return null;
+      }
+    };
+
+    this.models = {
+      boost: await loadModel('boost'),
+      mult_x2: await loadModel('multiplier_x2'),
+      mult_x4: await loadModel('multiplier_x4'),
+      mult_x05: await loadModel('multiplier_x0.5'),
+      mult_x025: await loadModel('multiplier_x0.25'),
+    };
+
     this.#buildMenuScene();
     onProgress(1);
   }
@@ -349,27 +391,27 @@ export class SceneManager {
     if (!this.#level) return;
 
     const multGroup = new THREE.Group();
-    // Bajamos un poco la altura para que quede más pegado a la mesa
-    multGroup.position.set(pos[0], 0.6, pos[1]);
+    multGroup.position.set(pos[0], 0.8, pos[1]);
 
+    // Color según el valor
     let color = PALETTE.green;
     if (value === 0.25) color = PALETTE.violet;
     if (value === 0.5) color = PALETTE.cyan;
     if (value === 4) color = PALETTE.red;
 
+    // 1. EL CÍRCULO BRILLANTE (Generado por código)
     const sphereMat = new THREE.MeshStandardMaterial({
       color: 0x000000,
       emissive: color,
-      emissiveIntensity: 1.2,
+      emissiveIntensity: 2.0, // Brillo fuerte para el Bloom
       transparent: true,
-      opacity: 0.3,
+      opacity: 0.6, // Un poco más opaco para que se vea bien
       depthWrite: false
     });
-
-    // REDUCIDO: Esfera más pequeña (de 1.0 a 0.7)
-    const sphere = new THREE.Mesh(new THREE.SphereGeometry(0.7, 32, 32), sphereMat);
+    const sphere = new THREE.Mesh(new THREE.SphereGeometry(0.8, 32, 32), sphereMat);
     multGroup.add(sphere);
 
+    // 2. EL NÚMERO (Para que siempre se lea)
     const canvas = document.createElement('canvas');
     canvas.width = 256; canvas.height = 256;
     const ctx = canvas.getContext('2d');
@@ -387,8 +429,6 @@ export class SceneManager {
     textTexture.colorSpace = THREE.SRGBColorSpace;
     const textMat = new THREE.SpriteMaterial({ map: textTexture, transparent: true, depthWrite: false });
     const textSprite = new THREE.Sprite(textMat);
-
-    // REDUCIDO: Texto más pequeño (de 2, 2 a 1.3, 1.3)
     textSprite.scale.set(1.3, 1.3, 1);
     multGroup.add(textSprite);
 
@@ -463,6 +503,34 @@ export class SceneManager {
       const ring = new THREE.Mesh(new THREE.TorusGeometry(def.radius * 0.7, 0.07, 10, 40), new THREE.MeshBasicMaterial({ color: 0xffffff }));
       ring.rotation.x = Math.PI / 2; ring.position.y = 0.62; body.add(ring);
       group.add(body); bumpers.set(def.id, { material, ring, flash: 0 });
+    }
+
+    // --- BOOSTS ---
+    if (layout.boosts) {
+      for (const def of layout.boosts) {
+        let boostMesh = null;
+
+        if (this.models.boost) {
+          boostMesh = this.models.boost.scene.clone();
+
+          const box = new THREE.Box3().setFromObject(boostMesh);
+          const center = box.getCenter(new THREE.Vector3());
+          const size = box.getSize(new THREE.Vector3());
+          boostMesh.position.sub(center);
+          const maxDim = Math.max(size.x, size.y, size.z);
+          if (maxDim > 0) boostMesh.scale.setScalar(2.5 / maxDim);
+        } else {
+          boostMesh = new THREE.Mesh(
+            new THREE.ConeGeometry(0.8, 2, 4),
+            new THREE.MeshBasicMaterial({ color: PALETTE.red, wireframe: true })
+          );
+          boostMesh.rotation.x = Math.PI / 2;
+        }
+
+        boostMesh.position.set(def.pos[0], 0.2, def.pos[1]);
+        boostMesh.rotation.y = def.rotY ?? 0;
+        group.add(boostMesh);
+      }
     }
 
     const flipperMeshes = {};
